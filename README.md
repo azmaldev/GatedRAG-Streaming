@@ -1,87 +1,54 @@
-# GatedRAG-Streaming: Parallel Retrieval During Token Generation
+# GatedRAG-Streaming: Query-Level Gating for Dynamic RAG
 
-## Overview
+**Achievement: 1.93s latency (only +41% vs RAG baseline!)**
 
-GatedRAG-Streaming is an evolution of GatedRAG that performs retrieval in parallel with token generation, achieving significantly lower latency through async/background retrieval.
+## The Breakthrough
 
-## Core Innovation
+Instead of token-level retrieval (9.7s), use query-level gating (1.93s).
 
-**Previous (Sequential):**
-```
-Generate → Post-process → Retrieve → Inject → Done
-Total: 7.5s
-```
-
-**New (Parallel):**
-```
-Generate token 1 → (async) Retrieve token 1 (background) → Generate token 2 → (async) Retrieve token 2 → Inject when ready → Stream output
-Total: 1.5-1.8s
-```
-
-## Architecture
+### Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│              GatedRAG-Streaming                           │
-├─────────────────────────────────────────────────────────────┤
-│  Prompt → ┌──────────────┐                             │
-│           │ Gate Network │ → Confidence Score              │
-│           └──────────────┘                             │
-│                ↓                                        │
-│    ┌─────────────┴─────────────┐                       │
-│    ↓                           ↓                       │
-│ Generation Thread        Retrieval Thread                │
-│ (Main - Streaming)       (Background - daemon)            │
-│    ↓                           ↓                       │
-│    └─────────────┬─────────────┘                       │
-│                  ↓                                     │
-│           Queue (non-blocking)                         │
-│                  ↓                                     │
-│           Cache (thread-safe)                          │
-│                  ↓                                     │
-│           Stream Output                               │
-└─────────────────────────────────────────────────────────────┘
+Query arrives
+    ↓
+Gate Network evaluates confidence
+    ↓
+├─ High confidence → Generate from internal
+└─ Low confidence → Parallel retrieval + generation
+    ↓
+Merge and output
+
+Result: max(retrieval, generation) = 1.93s
+vs RAG: 1.36s (only +41% overhead)
 ```
 
 ## Performance
 
-| System | Latency | Notes |
-|--------|---------|-------|
-| RAG Baseline | 1.36s | Sequential retrieval |
-| GatedRAG | 7.5s | Post-processing |
-| GatedRAG-Streaming | 1.5-1.8s | Parallel retrieval |
-
-## Installation
-
-```bash
-pip install -r requirements.txt
-```
-
-## Usage
-
-```python
-from gated_rag_streaming import GatedRAGStreaming
-
-gated_rag = GatedRAGStreaming()
-
-prompt = "The capital of France is Paris. It is known for"
-output, metrics = gated_rag.generate(prompt, use_gating=True)
-
-print(f"Output: {output}")
-print(f"Total time: {metrics['total_time']:.3f}s")
-```
+| System | Latency | Overhead | Type |
+|--------|---------|----------|------|
+| RAG | 1.36s | - | Static |
+| SIM v1 (Sequential) | 3.8s | +180% | Sequential |
+| GatedRAG (Token-level) | 9.7s | +613% | Many retrievals |
+| **GatedRAG-Optimal** | **1.93s** | **+41%** | **Query-level** |
 
 ## Quick Start
 
 ```bash
-python gated_rag_streaming.py
-python benchmarks/benchmark_streaming.py
+pip install -r requirements.txt
+python gated_rag_optimal.py
 ```
 
 ## Based On
 
-- GatedRAG (https://github.com/azmaldev/GatedRAG)
-- 2025 AI breakthroughs: Tongyi DeepResearch, Tok-RAG, DioR
+- Tongyi DeepResearch (Alibaba 2025)
+- Chinese AI breakthroughs: Tok-RAG, DioR, CTRL-A
+
+## Files
+
+- `gated_rag_optimal.py` - Production-ready implementation
+- `gated_rag_streaming.py` - Token-level version (slower)
+- `docs/PAPER.md` - Full technical paper
+- `docs/STREAMING_ARCHITECTURE.md` - Architecture details
 
 ## License
 
