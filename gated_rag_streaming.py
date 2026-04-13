@@ -114,16 +114,17 @@ class GatedRAGStreaming:
             token = chunk["response"]
             generated_text += token
 
-            gate_score = self.gate_network(token, context)
+            clean_token = token.strip(".,;:!?\"' ")
+            gate_score = self.gate_network(clean_token, context)
 
             if gate_score < 0.6:
                 expert_routing_count += 1
-                query = token.strip()
+                query = clean_token.strip()
 
                 if query and query not in self.retrieval_cache:
                     future = self._async_retrieve(query)
                     pending_futures.append((query, future))
-                elif query in self.retrieval_cache:
+                elif query and query in self.retrieval_cache:
                     context += " " + self.retrieval_cache[query]
 
         ret_start = time.time()
